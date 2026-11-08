@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>セザロ曲線・フラクタルビジュアライザー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { background: #0d0d1a; }
+  canvas { display: block; }
+</style>
+</head>
+<body class="min-h-screen text-white p-4">
+<div class="max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold mb-1 text-purple-300">セザロ曲線フラクタルビジュアライザー</h1>
+  <p class="text-gray-400 text-sm mb-4">線分を角度αで二等分し折り曲げる操作を再帰的に繰り返して生成されるフラクタル曲線</p>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div class="bg-gray-800 rounded-lg p-3">
+      <label class="block text-xs text-gray-400 mb-1" for="angleSlider">
+        折り曲げ角度 α: <span id="angleVal" class="text-yellow-300 font-mono">60°</span>
+      </label>
+      <input type="range" id="angleSlider" min="1" max="179" step="1" value="60"
+        class="w-full accent-purple-400" aria-label="折り曲げ角度">
+    </div>
+    <div class="bg-gray-800 rounded-lg p-3">
+      <label class="block text-xs text-gray-400 mb-1" for="depthSlider">
+        反復深度: <span id="depthVal" class="text-yellow-300 font-mono">6</span>
+      </label>
+      <input type="range" id="depthSlider" min="1" max="10" step="1" value="6"
+        class="w-full accent-purple-400" aria-label="反復深度">
+    </div>
+  </div>
+
+  <div class="bg-gray-900 rounded-xl overflow-hidden border border-gray-700">
+    <canvas id="canvas" width="800" height="520" class="w-full" aria-label="セザロフラクタルキャンバス"></canvas>
+  </div>
+
+  <div class="mt-3 flex gap-3 items-center">
+    <button id="btnSave" class="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded font-semibold text-sm transition" aria-label="PNG保存">PNG保存</button>
+    <div class="text-sm text-gray-400">線分数: <span id="segCount" class="text-purple-300 font-mono">-</span></div>
+    <div class="text-sm text-gray-400 ml-4">α=90°でコッホ曲線に近似</div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  function cesaro(x1, y1, x2, y2, depth, alpha, segments) {
+    if (depth === 0) {
+      segments.push([x1, y1, x2, y2]);
+      return;
+    }
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const a = alpha * Math.PI / 180;
+    const newLen = len / (2 * Math.cos(a / 2));
+    const angle = Math.atan2(dy, dx);
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+    const offset = (len / 2) * Math.tan(a / 2);
+    const nx = mx - offset * Math.sin(angle);
+    const ny = my + offset * Math.cos(angle);
+    cesaro(x1, y1, nx, ny, depth - 1, alpha, segments);
+    cesaro(nx, ny, x2, y2, depth - 1, alpha, segments);
+  }
+
+  function draw() {
+    const W = canvas.width;
+    const H = canvas.height;
+    const alpha = parseFloat(document.getElementById('angleSlider').value);
+    const depth = parseInt(document.getElementById('depthSlider').value);
+
+    ctx.fillStyle = '#0d0d1a';
+    ctx.fillRect(0, 0, W, H);
+
+    const margin = 60;
+    const segments = [];
+    cesaro(margin, H / 2, W - margin, H / 2, depth, alpha, segments);
+
+    if (segments.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    segments.forEach(([x1,y1,x2,y2]) => {
+      minX = Math.min(minX, x1, x2);
+      minY = Math.min(minY, y1, y2);
+      maxX = Math.max(maxX, x1, x2);
+      maxY = Math.max(maxY, y1, y2);
+    });
+
+    const rangeX = maxX - minX || 1;
+    const rangeY = maxY - minY || 1;
+    const scale = Math.min((W - margin*2) / rangeX, (H - margin*2) / rangeY);
+    const offX = (W - rangeX * scale) / 2 - minX * scale;
+    const offY = (H - rangeY * scale) / 2 - minY * scale;
+
+    ctx.lineWidth = Math.max(0.5, 2 - depth * 0.15);
+
+    segments.forEach(([x1, y1, x2, y2], i) => {
+      const t = i / segments.length;
+      const hue = 240 + t * 120;
+      ctx.strokeStyle = `hsl(${hue}, 90%, 65%)`;
+      ctx.beginPath();
+      ctx.moveTo(x1 * scale + offX, y1 * scale + offY);
+      ctx.lineTo(x2 * scale + offX, y2 * scale + offY);
+      ctx.stroke();
+    });
+
+    document.getElementById('segCount').textContent = segments.length.toLocaleString();
+  }
+
+  document.getElementById('angleSlider').addEventListener('input', function() {
+    document.getElementById('angleVal').textContent = this.value + '°';
+    draw();
+  });
+  document.getElementById('depthSlider').addEventListener('input', function() {
+    document.getElementById('depthVal').textContent = this.value;
+    draw();
+  });
+
+  document.getElementById('btnSave').addEventListener('click', function() {
+    const link = document.createElement('a');
+    link.download = 'cesaro-fractal.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>
